@@ -94,11 +94,27 @@ Sample output:
 - `recommend.py` averages the TF-IDF vectors of all seed matches for the query and returns the top-K cosine similarities, excluding the seeds.
 - To change vocabulary size, use `--max_features` in `train_tfidf.py`.
 
+### Alternative: Sentence-Transformer embeddings
+
+For higher-quality semantic recommendations, we also provide an embedding-based approach:
+
+```bash
+# Generate embeddings (requires sentence-transformers)
+. .venv/bin/activate
+pip install sentence-transformers
+python embed_sbert.py --data mangadex_clean.parquet --out_dir models_sbert --batch_size 32
+
+# Get recommendations using embeddings
+python recommend_sbert.py --query "Solo Leveling" --k 10
+```
+
+This uses `all-MiniLM-L6-v2` to create 384-dimensional embeddings from title+description+tags, then finds similar items via cosine similarity. Results are often more semantically relevant than TF-IDF.
+
 ### Next steps
 
 - Add CSV/JSONL export flags to preprocessing for Git-friendly diffs
 - Improve tag normalization (synonyms, ontology)
-- Add Sentence-Transformer embeddings for higher-quality semantic matches
 - Expose a FastAPI endpoint for real-time recommendations
+- Add evaluation metrics (Recall@K, NDCG) to compare TF-IDF vs embeddings
 
 
