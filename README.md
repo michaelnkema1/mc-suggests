@@ -141,4 +141,28 @@ curl -s "http://127.0.0.1:8000/recommend/tfidf?query=Solo%20Leveling&k=5" | jq .
 curl -s "http://127.0.0.1:8000/recommend/sbert?query=Solo%20Leveling&k=5" | jq .
 ```
 
+## Frontend (static UI)
+
+The API also serves a simple UI at the root path.
+
+Open:
+
+```bash
+http://127.0.0.1:8000/
+```
+
+Notes:
+- Same-origin API is used by default. If the UI is hosted elsewhere, set `window.API_BASE` inside `frontend/index.html` to your API URL (e.g., `http://localhost:8000`).
+- Files: `frontend/index.html`, `frontend/style.css`, `frontend/app.js`.
+
+## Troubleshooting
+
+- Port in use:
+  ```bash
+  ss -ltnp | grep 8000
+  pkill -f 'uvicorn api.main:app'
+  ```
+- Server crash about tabs/spaces: ensure `api/main.py` uses consistent spaces.
+- SBERT model download timeouts: retry `embed_sbert.py` later or use TF-IDF endpoints in the meantime.
+
 
