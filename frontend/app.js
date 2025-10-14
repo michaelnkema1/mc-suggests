@@ -1,7 +1,9 @@
-async function fetchRecs(query, engine, k = 10) {
+async function fetchRecs(query, engine, k = 10, alpha = 0.7) {
   // If API_BASE is not set, assume same origin as frontend
   const base = (typeof window.API_BASE === 'string') ? window.API_BASE : '';
-  const url = `${base}/recommend/${engine}?query=${encodeURIComponent(query)}&k=${k}`;
+  const params = new URLSearchParams({ query, k: String(k) });
+  if (engine === 'hybrid') params.set('alpha', String(alpha));
+  const url = `${base}/recommend/${engine}?${params.toString()}`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Request failed: ${res.status}`);
   return res.json();
@@ -26,6 +28,12 @@ window.addEventListener('DOMContentLoaded', () => {
   const engine = document.getElementById('engine');
   const go = document.getElementById('go');
   const results = document.getElementById('results');
+  const alpha = document.getElementById('alpha');
+  const alphaVal = document.getElementById('alphaVal');
+
+  alpha.addEventListener('input', () => {
+    alphaVal.textContent = Number(alpha.value).toFixed(2);
+  });
 
   go.addEventListener('click', async () => {
     const query = q.value.trim();
@@ -33,7 +41,7 @@ window.addEventListener('DOMContentLoaded', () => {
     go.disabled = true;
     go.textContent = 'Loading...';
     try {
-      const data = await fetchRecs(query, engine.value, 12);
+      const data = await fetchRecs(query, engine.value, 12, Number(alpha.value));
       renderResults(results, data);
     } catch (e) {
       results.innerHTML = `<div>Failed to load: ${String(e)}</div>`;

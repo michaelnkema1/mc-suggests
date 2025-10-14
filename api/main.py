@@ -19,6 +19,7 @@ DF = None
 VECTORIZER = None
 TFIDF_X = None
 SBERT_EMB = None
+TFIDF_SCORES_CACHE = None
 
 
 def load_df():
@@ -41,6 +42,16 @@ def load_sbert():
     if SBERT_EMB is None:
         SBERT_EMB = np.load("models_sbert/embeddings.npy")
     return SBERT_EMB
+
+
+def min_max_scale(arr: np.ndarray) -> np.ndarray:
+    if arr.size == 0:
+        return arr
+    a_min = float(np.min(arr))
+    a_max = float(np.max(arr))
+    if a_max <= a_min:
+        return np.zeros_like(arr)
+    return (arr - a_min) / (a_max - a_min)
 
 
 def find_by_title(df: pd.DataFrame, query: str, k: int = 5) -> List[int]:
@@ -121,6 +132,58 @@ def recommend_sbert(query: str = Query(...), k: int = Query(10, ge=1, le=50)):
             "id": row["id"],
             "title": row["title"] if isinstance(row["title"], str) else "",
             "score": float(scores[i]),
+            "year": int(row["year"]) if pd.notna(row["year"]) else None,
+            "rating": float(row["rating"]) if pd.notna(row["rating"]) else None,
+        })
+    return {"seed_count": len(seed_idxs), "results": items}
+
+
+@app.get("/recommend/hybrid", response_model=RecommendResponse)
+def recommend_hybrid(
+    query: str = Query(...),
+    k: int = Query(10, ge=1, le=50),
+    alpha: float = Query(0.7, ge=0.0, le=1.0),
+):
+    df = load_df()
+    emb = load_sbert()
+    _, X = load_tfidf()
+
+    seed_idxs = find_by_title(df, query, k=5)
+    if not seed_idxs:
+        return {"seed_count": 0, "results": []}
+
+    # SBERT scores (embeddings are normalized; cosine == dot)
+    sbert_centroid = emb[seed_idxs].mean(axis=0, keepdims=True)
+    sbert_scores = (emb @ sbert_centroid.T).ravel()
+
+    # TF-IDF scores via centroid cosine
+    seed_mat = X[seed_idxs]
+    tfidf_centroid = seed_mat.mean(axis=0)
+    if not sparse.issparse(tfidf_centroid):
+        tfidf_centroid = np.asarray(tfidf_centroid)
+        tfidf_centroid = sparse.csr_matrix(tfidf_centroid)
+    tfidf_scores = (tfidf_centroid @ X.T).toarray().ravel()
+
+    # Exclude seeds
+    for si in seed_idxs:
+        sbert_scores[si] = -1.0
+        tfidf_scores[si] = -1.0
+
+    # Normalize scores to 0..1 then blend
+    sbert_scaled = min_max_scale(sbert_scores)
+    tfidf_scaled = min_max_scale(tfidf_scores)
+    blended = alpha * sbert_scaled + (1.0 - alpha) * tfidf_scaled
+
+    top = np.argpartition(-blended, range(min(k, len(blended))))[:k]
+    top = top[np.argsort(-blended[top])]
+
+    items = []
+    for i in top:
+        row = df.iloc[int(i)]
+        items.append({
+            "id": row["id"],
+            "title": row["title"] if isinstance(row["title"], str) else "",
+            "score": float(blended[i]),
             "year": int(row["year"]) if pd.notna(row["year"]) else None,
             "rating": float(row["rating"]) if pd.notna(row["rating"]) else None,
         })
