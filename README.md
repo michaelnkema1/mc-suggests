@@ -117,4 +117,28 @@ This uses `all-MiniLM-L6-v2` to create 384-dimensional embeddings from title+des
 - Expose a FastAPI endpoint for real-time recommendations
 - Add evaluation metrics (Recall@K, NDCG) to compare TF-IDF vs embeddings
 
+## API (FastAPI)
+
+Run locally:
+
+```bash
+cd /home/mykecodes/Desktop/mc-suggests
+. .venv/bin/activate
+pip install fastapi uvicorn[standard]
+uvicorn api.main:app --host 0.0.0.0 --port 8000
+```
+
+Endpoints:
+
+- Health: `GET /health`
+- TF-IDF: `GET /recommend/tfidf?query=<title>&k=10`
+- SBERT: `GET /recommend/sbert?query=<title>&k=10`
+
+Example:
+
+```bash
+curl -s "http://127.0.0.1:8000/recommend/tfidf?query=Solo%20Leveling&k=5" | jq .
+curl -s "http://127.0.0.1:8000/recommend/sbert?query=Solo%20Leveling&k=5" | jq .
+```
+
 

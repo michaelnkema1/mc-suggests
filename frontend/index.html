@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MC-Suggests</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <div class="container">
+    <h1>MC-Suggests</h1>
+    <div class="controls">
+      <input id="query" type="text" placeholder="Search title, e.g., Solo Leveling" />
+      <select id="engine">
+        <option value="tfidf">TF-IDF</option>
+        <option value="sbert">SBERT</option>
+      </select>
+      <button id="go">Recommend</button>
+    </div>
+    <div id="results" class="results"></div>
+  </div>
+
+  <script src="/static/app.js"></script>
+  <script>
+    window.API_BASE = '';
+  </script>
+</body>
+</html>
+
+
