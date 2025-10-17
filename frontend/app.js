@@ -1,12 +1,26 @@
-async function fetchRecs(query, engine, k = 10, alpha = 0.7) {
-  // If API_BASE is not set, assume same origin as frontend
-  const base = (typeof window.API_BASE === 'string') ? window.API_BASE : '';
-  const params = new URLSearchParams({ query, k: String(k) });
-  if (engine === 'hybrid') params.set('alpha', String(alpha));
-  const url = `${base}/recommend/${engine}?${params.toString()}`;
+// Cache bust: 2024-01-04
+async function fetchRecs(query, k = 10, alpha = 0.85) {
+  // Always use hybrid model
+  const base = (typeof window.API_BASE === 'string') ? window.API_BASE : 'http://127.0.0.1:8001';
+  const params = new URLSearchParams({ query, k: String(k), alpha: String(alpha) });
+  const url = `${base}/recommend/hybrid?${params.toString()}`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Request failed: ${res.status}`);
   return res.json();
+}
+
+function getStatusDisplay(status) {
+  if (!status) return '';
+  
+  const statusMap = {
+    'completed': { icon: '✅', text: 'Completed', class: 'status-completed' },
+    'ongoing': { icon: '🔄', text: 'Ongoing', class: 'status-ongoing' },
+    'hiatus': { icon: '⏸️', text: 'Hiatus', class: 'status-hiatus' },
+    'cancelled': { icon: '❌', text: 'Cancelled', class: 'status-cancelled' }
+  };
+  
+  const statusInfo = statusMap[status.toLowerCase()] || { icon: '❓', text: status, class: 'status-unknown' };
+  return `<span class="status-badge ${statusInfo.class}">${statusInfo.icon} ${statusInfo.text}</span>`;
 }
 
 function renderResults(root, data) {
@@ -14,18 +28,29 @@ function renderResults(root, data) {
   data.results.forEach(item => {
     const el = document.createElement('div');
     el.className = 'card';
-    el.innerHTML = `
+    
+    const img = document.createElement('img');
+    img.src = item.cover_url ? `http://127.0.0.1:8001${item.cover_url}` : 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iODAiIHZpZXdCb3g9IjAgMCA2MCA4MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjYwIiBoZWlnaHQ9IjgwIiBmaWxsPSIjMzAzNjNkIi8+CjxwYXRoIGQ9Ik0yMCAyNUg0MFY1NUgyMFYyNVoiIGZpbGw9IiM2Yzc1N2QiLz4KPC9zdmc+';
+    img.alt = item.title || 'Cover';
+    img.onerror = () => { img.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iODAiIHZpZXdCb3g9IjAgMCA2MCA4MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjYwIiBoZWlnaHQ9IjgwIiBmaWxsPSIjMzAzNjNkIi8+CjxwYXRoIGQ9Ik0yMCAyNUg0MFY1NUgyMFYyNVoiIGZpbGw9IiM2Yzc1N2QiLz4KPC9zdmc+'; };
+    
+    const content = document.createElement('div');
+    content.className = 'card-content';
+    content.innerHTML = `
       <div class="title">${item.title}</div>
-      <div class="meta">${item.year ?? ''} ${item.rating ? `• ⭐ ${item.rating.toFixed(2)}` : ''}</div>
+      <div class="meta">${item.year ?? ''} ${item.rating ? `• ⭐ ${item.rating.toFixed(2)}` : ''} ${item.chapters ? `• 📖 ${item.chapters} ch` : ''}</div>
+      <div class="status">${getStatusDisplay(item.status)}</div>
       <div class="score">score: ${item.score.toFixed(4)}</div>
     `;
+    
+    el.appendChild(img);
+    el.appendChild(content);
     root.appendChild(el);
   });
 }
 
 window.addEventListener('DOMContentLoaded', () => {
   const q = document.getElementById('query');
-  const engine = document.getElementById('engine');
   const go = document.getElementById('go');
   const results = document.getElementById('results');
   const alpha = document.getElementById('alpha');
@@ -41,7 +66,7 @@ window.addEventListener('DOMContentLoaded', () => {
     go.disabled = true;
     go.textContent = 'Loading...';
     try {
-      const data = await fetchRecs(query, engine.value, 12, Number(alpha.value));
+      const data = await fetchRecs(query, 12, Number(alpha.value));
       renderResults(results, data);
     } catch (e) {
       results.innerHTML = `<div>Failed to load: ${String(e)}</div>`;

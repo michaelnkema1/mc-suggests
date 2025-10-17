@@ -1,2 +1,14 @@
 .venv
 MODEL_OVERVIEW.md
+frontend/debug.html
+frontend/test.html
+test_images.html
+
+# Large data files and checkpoints
+checkpoints/
+covers/
+*.parquet
+*.joblib
+*.npz
+*.npy
+checkpoint_*.json

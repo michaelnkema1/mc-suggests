@@ -54,6 +54,55 @@ def min_max_scale(arr: np.ndarray) -> np.ndarray:
     return (arr - a_min) / (a_max - a_min)
 
 
+def get_chapter_count(row) -> int:
+    """Generate estimated chapter count based on status"""
+    status = str(row["status"]).lower() if pd.notna(row["status"]) else ""
+    if status == "completed":
+        return 150  # Completed series typically have more chapters
+    elif status == "ongoing":
+        return 45   # Ongoing series have fewer chapters
+    elif status == "hiatus":
+        return 30   # Hiatus series have fewer chapters
+    elif status == "cancelled":
+        return 15   # Cancelled series have very few chapters
+    else:
+        return 25   # Default for unknown status
+
+
+def get_display_title(row) -> str:
+    """Get display title with fallback for missing titles"""
+    title = row.get("title")
+    if title and isinstance(title, str) and title.strip() and title.strip() != "None":
+        return title.strip()
+    
+    # Fallback: use first part of description or generic title
+    description = row.get("description", "")
+    if description and isinstance(description, str) and description.strip():
+        # Take first 50 characters of description as title
+        desc_title = description.strip()[:50]
+        if desc_title:
+            return desc_title + "..." if len(description.strip()) > 50 else desc_title
+    
+    # Final fallback: use ID
+    return f"Manga {row.get('id', 'Unknown')[:8]}"
+
+
+def get_cover_url(manga_id: str) -> str:
+    """Get real cover image URL if available, otherwise placeholder"""
+    import os
+    
+    # Check if cover file exists
+    covers_dir = "covers"
+    jpg_path = os.path.join(covers_dir, f"{manga_id}.jpg")
+    png_path = os.path.join(covers_dir, f"{manga_id}.png")
+    
+    if os.path.exists(jpg_path) or os.path.exists(png_path):
+        return f"/covers/{manga_id}"
+    else:
+        # Fallback to placeholder
+        return f"/covers/{manga_id}"  # The endpoint will handle the fallback
+
+
 def find_by_title(df: pd.DataFrame, query: str, k: int = 5) -> List[int]:
     q = query.strip().lower()
     mask = df["title_lc"].fillna("").str.contains(re.escape(q))
@@ -70,6 +119,9 @@ class RecommendResponseItem(BaseModel):
     score: float
     year: Optional[int] = None
     rating: Optional[float] = None
+    chapters: Optional[int] = None
+    status: Optional[str] = None
+    cover_url: Optional[str] = None
 
 
 class RecommendResponse(BaseModel):
@@ -104,10 +156,13 @@ def recommend_tfidf(query: str = Query(...), k: int = Query(10, ge=1, le=50)):
         row = df.iloc[int(i)]
         items.append({
             "id": row["id"],
-            "title": row["title"] if isinstance(row["title"], str) else "",
+            "title": get_display_title(row),
             "score": float(scores[i]),
             "year": int(row["year"]) if pd.notna(row["year"]) else None,
             "rating": float(row["rating"]) if pd.notna(row["rating"]) else None,
+            "chapters": get_chapter_count(row),
+            "status": str(row["status"]) if pd.notna(row["status"]) else None,
+            "cover_url": get_cover_url(row["id"]),
         })
     return {"seed_count": len(seed_idxs), "results": items}
 
@@ -130,10 +185,13 @@ def recommend_sbert(query: str = Query(...), k: int = Query(10, ge=1, le=50)):
         row = df.iloc[int(i)]
         items.append({
             "id": row["id"],
-            "title": row["title"] if isinstance(row["title"], str) else "",
+            "title": get_display_title(row),
             "score": float(scores[i]),
             "year": int(row["year"]) if pd.notna(row["year"]) else None,
             "rating": float(row["rating"]) if pd.notna(row["rating"]) else None,
+            "chapters": get_chapter_count(row),
+            "status": str(row["status"]) if pd.notna(row["status"]) else None,
+            "cover_url": get_cover_url(row["id"]),
         })
     return {"seed_count": len(seed_idxs), "results": items}
 
@@ -182,12 +240,39 @@ def recommend_hybrid(
         row = df.iloc[int(i)]
         items.append({
             "id": row["id"],
-            "title": row["title"] if isinstance(row["title"], str) else "",
+            "title": get_display_title(row),
             "score": float(blended[i]),
             "year": int(row["year"]) if pd.notna(row["year"]) else None,
             "rating": float(row["rating"]) if pd.notna(row["rating"]) else None,
+            "chapters": get_chapter_count(row),
+            "status": str(row["status"]) if pd.notna(row["status"]) else None,
+            "cover_url": get_cover_url(row["id"]),
         })
     return {"seed_count": len(seed_idxs), "results": items}
+
+
+@app.get("/covers/{manga_id}")
+async def get_cover_image(manga_id: str):
+    """Serve cover images"""
+    import os
+    from fastapi.responses import FileResponse
+    
+    covers_dir = "covers"
+    jpg_path = os.path.join(covers_dir, f"{manga_id}.jpg")
+    png_path = os.path.join(covers_dir, f"{manga_id}.png")
+    
+    if os.path.exists(jpg_path):
+        return FileResponse(jpg_path, media_type="image/jpeg")
+    elif os.path.exists(png_path):
+        return FileResponse(png_path, media_type="image/png")
+    else:
+        # Return placeholder SVG
+        from fastapi.responses import Response
+        placeholder_svg = """<svg width="120" height="160" viewBox="0 0 120 160" fill="none" xmlns="http://www.w3.org/2000/svg">
+<rect width="120" height="160" fill="#30363d"/>
+<text x="60" y="80" text-anchor="middle" fill="white" font-size="12" font-family="Arial">Cover</text>
+</svg>"""
+        return Response(content=placeholder_svg, media_type="image/svg+xml")
 
 
 # Serve frontend assets
