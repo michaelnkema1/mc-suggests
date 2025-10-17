@@ -1,159 +1,91 @@
 ### MC-Suggests
 
-A minimal pipeline to preprocess MangaDex data and train a TF-IDF content-based recommender, with a simple CLI to fetch similar titles.
+A manhwa recommendation system using hybrid TF-IDF and Sentence-Transformer models with a modern web interface.
 
 ### Project structure
 
-- `mangadex_data.csv`, `mangadex_data.json`: raw scraped data
-- `preprocess_mangadex.py`: cleans/unifies raw data into typed, model-ready tables
-- `mangadex_clean.parquet`, `mangadex_tags.parquet`: cleaned datasets (Parquet)
-- `train_tfidf.py`: trains a TF-IDF model over descriptions and tags
-- `models/`: saved TF-IDF vectorizer, sparse matrix, and row index mapping
-- `recommend.py`: CLI to query similar titles by name
+**Core Files:**
+- `api/main.py` - FastAPI backend serving recommendations
+- `frontend/` - Web interface (HTML, CSS, JavaScript)
+- `mangadex_clean.parquet` - Cleaned dataset (processed from raw data)
+- `models/` - Trained TF-IDF models and vectorizer
+- `models_sbert/` - Sentence-Transformer embeddings
+- `covers/` - Cover images for manhwas
+
+**Development Scripts:**
+- `preprocess_mangadex.py` - Data cleaning pipeline
+- `train_tfidf.py` - TF-IDF model training
+- `embed_sbert.py` - Sentence-Transformer embedding generation
+- `recommend.py` - CLI recommendation tool
+- `recommend_sbert.py` - CLI SBERT recommendation tool
+- `evaluate_models.py` - Model evaluation script
 
 ### Requirements
 
 - Python 3.10+
-- Dependencies (installed in steps below):
+- Dependencies:
   - pandas, numpy, pyarrow
   - scikit-learn, scipy, joblib
+  - sentence-transformers (for SBERT)
+  - fastapi, uvicorn (for API)
 
-### Setup
+### Quick Start
 
 ```bash
 cd /home/mykecodes/Desktop/mc-suggests
 python3 -m venv .venv
 . .venv/bin/activate
 pip install --upgrade pip
-pip install pandas numpy pyarrow scikit-learn scipy joblib
+pip install pandas numpy pyarrow scikit-learn scipy joblib sentence-transformers fastapi uvicorn[standard]
+
+# Start the web application
+uvicorn api.main:app --host 0.0.0.0 --port 8001 --reload
 ```
 
-### 1) Preprocess data
+Then open: http://127.0.0.1:8001/
 
-Input: `mangadex_data.csv` and/or `mangadex_data.json`. Output: cleaned Parquets.
+### Features
+
+- **Hybrid Recommendations**: Combines TF-IDF and Sentence-Transformer models
+- **Modern Web Interface**: Colorful, responsive UI with cover images
+- **Status Display**: Shows completion status (✅ Completed, 🔄 Ongoing, ⏸️ Hiatus, ❌ Cancelled)
+- **Chapter Estimates**: Displays estimated chapter counts based on status
+- **Cover Images**: Real cover images with fallback placeholders
+
+### API Endpoints
+
+- `GET /` - Web interface
+- `GET /health` - Health check
+- `GET /recommend/hybrid?query=<title>&k=12&alpha=0.85` - Hybrid recommendations
+- `GET /covers/{manga_id}` - Cover images
+
+### Development (Optional)
+
+If you want to retrain models or process new data:
 
 ```bash
-. .venv/bin/activate
-python preprocess_mangadex.py \
-  --csv mangadex_data.csv \
-  --json mangadex_data.json \
-  --out mangadex_clean.parquet \
-  --tags_out mangadex_tags.parquet
+# 1. Preprocess raw data
+python preprocess_mangadex.py --csv mangadex_data.csv --json mangadex_data.json --out mangadex_clean.parquet
+
+# 2. Train TF-IDF model
+python train_tfidf.py --data mangadex_clean.parquet --model_out models/tfidf_vectorizer.joblib --matrix_out models/tfidf_matrix.npz
+
+# 3. Generate SBERT embeddings
+python embed_sbert.py --data mangadex_clean.parquet --out_dir models_sbert
+
+# 4. Evaluate models
+python evaluate_models.py --data mangadex_clean.parquet --k 10
 ```
 
-What it does:
-
-- Deduplicates by `id`
-- Cleans `title` and `description` (unicode normalize, strip links/markdown/artifacts)
-- Parses and normalizes `tags` into a list of snake_case labels
-- Normalizes `demographic`, `status`, `content_rating`
-- Casts and bounds `rating`, `follows`, `year`; removes too-short descriptions
-- Adds helper features: `title_lc`, `follows_log1p`, `description_len`
-
-### 2) Train TF-IDF model
+### CLI Usage
 
 ```bash
-. .venv/bin/activate
-python train_tfidf.py \
-  --data mangadex_clean.parquet \
-  --model_out models/tfidf_vectorizer.joblib \
-  --matrix_out models/tfidf_matrix.npz \
-  --index_out models/id_index.json
-```
-
-Outputs:
-
-- `models/tfidf_vectorizer.joblib`: fitted `TfidfVectorizer`
-- `models/tfidf_matrix.npz`: sparse TF-IDF matrix (rows align with `mangadex_clean.parquet`)
-- `models/id_index.json`: row-index to `id` mapping
-
-### 3) Get recommendations
-
-Find titles similar to a query string (partial match against `title`):
-
-```bash
-. .venv/bin/activate
+# TF-IDF recommendations
 python recommend.py --query "Solo Leveling" --k 10
-```
 
-Sample output:
-
-```json
-{
-  "seed_count": 2,
-  "results": [
-    {"id": "...", "title": "Leveling Up In An Exclusive Dungeon", "score": 0.1311, "year": 2024, "rating": 7.76},
-    {"id": "...", "title": "Hardcore Leveling Warrior: Earth Game", "score": 0.1274, "year": 2023, "rating": 8.92}
-  ]
-}
-```
-
-### Notes & tips
-
-- Parquet is used for speed and typed columns. If you need CSV/JSONL exports, we can add optional flags.
-- `recommend.py` averages the TF-IDF vectors of all seed matches for the query and returns the top-K cosine similarities, excluding the seeds.
-- To change vocabulary size, use `--max_features` in `train_tfidf.py`.
-
-### Alternative: Sentence-Transformer embeddings
-
-For higher-quality semantic recommendations, we also provide an embedding-based approach:
-
-```bash
-# Generate embeddings (requires sentence-transformers)
-. .venv/bin/activate
-pip install sentence-transformers
-python embed_sbert.py --data mangadex_clean.parquet --out_dir models_sbert --batch_size 32
-
-# Get recommendations using embeddings
+# SBERT recommendations  
 python recommend_sbert.py --query "Solo Leveling" --k 10
 ```
-
-This uses `all-MiniLM-L6-v2` to create 384-dimensional embeddings from title+description+tags, then finds similar items via cosine similarity. Results are often more semantically relevant than TF-IDF.
-
-### Next steps
-
-- Add CSV/JSONL export flags to preprocessing for Git-friendly diffs
-- Improve tag normalization (synonyms, ontology)
-- Expose a FastAPI endpoint for real-time recommendations
-- Add evaluation metrics (Recall@K, NDCG) to compare TF-IDF vs embeddings
-
-## API (FastAPI)
-
-Run locally:
-
-```bash
-cd /home/mykecodes/Desktop/mc-suggests
-. .venv/bin/activate
-pip install fastapi uvicorn[standard]
-uvicorn api.main:app --host 0.0.0.0 --port 8000
-```
-
-Endpoints:
-
-- Health: `GET /health`
-- TF-IDF: `GET /recommend/tfidf?query=<title>&k=10`
-- SBERT: `GET /recommend/sbert?query=<title>&k=10`
-
-Example:
-
-```bash
-curl -s "http://127.0.0.1:8000/recommend/tfidf?query=Solo%20Leveling&k=5" | jq .
-curl -s "http://127.0.0.1:8000/recommend/sbert?query=Solo%20Leveling&k=5" | jq .
-```
-
-## Frontend (static UI)
-
-The API also serves a simple UI at the root path.
-
-Open:
-
-```bash
-http://127.0.0.1:8000/
-```
-
-Notes:
-- Same-origin API is used by default. If the UI is hosted elsewhere, set `window.API_BASE` inside `frontend/index.html` to your API URL (e.g., `http://localhost:8000`).
-- Files: `frontend/index.html`, `frontend/style.css`, `frontend/app.js`.
 
 ## Troubleshooting
 

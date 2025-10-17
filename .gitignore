@@ -1,8 +1,17 @@
 .venv
 MODEL_OVERVIEW.md
+
+# Development and testing files
 frontend/debug.html
 frontend/test.html
 test_images.html
+mangadex_scraper.py
+mangadex_scraper2.0.py
+
+# Raw data files (keep processed ones)
+mangadex_data.csv
+mangadex_data.json
+mangadex_tags.parquet
 
 # Large data files and checkpoints
 checkpoints/
