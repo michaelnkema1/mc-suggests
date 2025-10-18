@@ -10,7 +10,7 @@ A manhwa recommendation system using hybrid TF-IDF and Sentence-Transformer mode
 - `mangadex_clean.parquet` - Cleaned dataset (processed from raw data)
 - `models/` - Trained TF-IDF models and vectorizer
 - `models_sbert/` - Sentence-Transformer embeddings
-- `covers/` - Cover images for manhwas
+- `covers/` - Cover images for manhwas, was not uploaded because it was quite huge
 
 **Development Scripts:**
 - `preprocess_mangadex.py` - Data cleaning pipeline
