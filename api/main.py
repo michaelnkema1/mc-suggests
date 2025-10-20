@@ -1,3 +1,4 @@
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi import FastAPI, Query
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
@@ -13,6 +14,20 @@ import pandas as pd
 from scipy import sparse
 
 app = FastAPI(title="MC-Suggests API")
+
+origins = [
+    "https://mc-suggests-frontend.onrender.com",
+    "https://mc-suggests.vercel.app/"  # <-- your actual frontend Render URL
+    "https://mc-suggests.onrender.com",           # optional: if same domain is used for both
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Lazy globals
 DF = None
