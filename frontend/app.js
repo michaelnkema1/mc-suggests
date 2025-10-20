@@ -1,7 +1,7 @@
 // Cache bust: 2024-01-04
 async function fetchRecs(query, k = 10, alpha = 0.85) {
   // Always use hybrid model
-  const base = (typeof window.API_BASE === 'string') ? window.API_BASE : 'http://127.0.0.1:8001';
+  const base = (typeof window.API_BASE === 'string') ? window.API_BASE : 'https://mc-suggests.onrender.com';
   const params = new URLSearchParams({ query, k: String(k), alpha: String(alpha) });
   const url = `${base}/recommend/hybrid?${params.toString()}`;
   const res = await fetch(url);
