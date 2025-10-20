@@ -38,11 +38,19 @@ python3 -m venv .venv
 pip install --upgrade pip
 pip install pandas numpy pyarrow scikit-learn scipy joblib sentence-transformers fastapi uvicorn[standard]
 
-# Start the web application
-uvicorn api.main:app --host 0.0.0.0 --port 8001 --reload
+# Start the web application (one command)
+./run.sh
+# or using Makefile
+# make run
 ```
 
 Then open: http://127.0.0.1:8001/
+
+To stop the server:
+
+```bash
+make stop
+```
 
 ### Features
 
@@ -91,10 +99,14 @@ python recommend_sbert.py --query "Solo Leveling" --k 10
 
 - Port in use:
   ```bash
-  ss -ltnp | grep 8000
+  ss -ltnp | grep 8001
   pkill -f 'uvicorn api.main:app'
   ```
 - Server crash about tabs/spaces: ensure `api/main.py` uses consistent spaces.
 - SBERT model download timeouts: retry `embed_sbert.py` later or use TF-IDF endpoints in the meantime.
+
+### Notes
+
+- Test/demo files are ignored by git: `frontend/debug.html`, `frontend/test.html`, `test_images.html`.
 
 
