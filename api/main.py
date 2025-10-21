@@ -17,7 +17,7 @@ app = FastAPI(title="MC-Suggests API")
 
 origins = [
     "https://mc-suggests-frontend.onrender.com",
-    "https://mc-suggests.vercel.app/"  # <-- your actual frontend Render URL
+    "https://mc-suggests.vercel.app/",  # <-- your actual frontend Render URL
     "https://mc-suggests.onrender.com",           # optional: if same domain is used for both
 ]
 
