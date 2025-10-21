@@ -25,6 +25,7 @@ function getStatusDisplay(status) {
 
 function renderResults(root, data) {
   root.innerHTML = '';
+  const base = (typeof window.API_BASE === 'string') ? window.API_BASE : 'https://mc-suggests.onrender.com';
   data.results.forEach(item => {
     const el = document.createElement('div');
     el.className = 'card';
