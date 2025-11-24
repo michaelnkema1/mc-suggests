@@ -12,6 +12,11 @@ mangadex_scraper2.0.py
 mangadex_data.csv
 mangadex_data.json
 mangadex_tags.parquet
+BLOG_POST.md
+PROJECT_STRUCTURE.md
+MODEL_OVERVIEW.md
+manhwa-covers.zip
+
 
 # Large data files and checkpoints
 checkpoints/
