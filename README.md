@@ -13,12 +13,14 @@ A manhwa recommendation system using hybrid TF-IDF and Sentence-Transformer mode
 - `covers/` - Cover images for manhwas, was not uploaded because it was quite huge
 
 **Development Scripts:**
-- `preprocess_mangadex.py` - Data cleaning pipeline
-- `train_tfidf.py` - TF-IDF model training
-- `embed_sbert.py` - Sentence-Transformer embedding generation
+- `data_processing/` - Data processing scripts and raw data files
+  - `preprocess_mangadex.py` - Data cleaning pipeline
+  - `train_tfidf.py` - TF-IDF model training
+  - `embed_sbert.py` - Sentence-Transformer embedding generation
+  - `evaluate_models.py` - Model evaluation script
+  - `mangadex_scraper2.0.py` - Data collection script
 - `recommend.py` - CLI recommendation tool
 - `recommend_sbert.py` - CLI SBERT recommendation tool
-- `evaluate_models.py` - Model evaluation script
 
 ### Requirements
 
@@ -73,16 +75,16 @@ If you want to retrain models or process new data:
 
 ```bash
 # 1. Preprocess raw data
-python preprocess_mangadex.py --csv mangadex_data.csv --json mangadex_data.json --out mangadex_clean.parquet
+python data_processing/preprocess_mangadex.py --csv data_processing/mangadex_data.csv --json data_processing/mangadex_data.json --out mangadex_clean.parquet
 
 # 2. Train TF-IDF model
-python train_tfidf.py --data mangadex_clean.parquet --model_out models/tfidf_vectorizer.joblib --matrix_out models/tfidf_matrix.npz
+python data_processing/train_tfidf.py --data mangadex_clean.parquet --model_out models/tfidf_vectorizer.joblib --matrix_out models/tfidf_matrix.npz
 
 # 3. Generate SBERT embeddings
-python embed_sbert.py --data mangadex_clean.parquet --out_dir models_sbert
+python data_processing/embed_sbert.py --data mangadex_clean.parquet --out_dir models_sbert
 
 # 4. Evaluate models
-python evaluate_models.py --data mangadex_clean.parquet --k 10
+python data_processing/evaluate_models.py --data mangadex_clean.parquet --k 10
 ```
 
 ### CLI Usage
@@ -103,7 +105,7 @@ python recommend_sbert.py --query "Solo Leveling" --k 10
   pkill -f 'uvicorn api.main:app'
   ```
 - Server crash about tabs/spaces: ensure `api/main.py` uses consistent spaces.
-- SBERT model download timeouts: retry `embed_sbert.py` later or use TF-IDF endpoints in the meantime.
+- SBERT model download timeouts: retry `data_processing/embed_sbert.py` later or use TF-IDF endpoints in the meantime.
 
 ### Notes
 
