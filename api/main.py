@@ -15,15 +15,18 @@ from scipy import sparse
 
 app = FastAPI(title="MC-Suggests API")
 
+# Browsers send the Origin header without a trailing slash, so entries must not have one
 origins = [
     "https://mc-suggests-frontend.onrender.com",
-    "https://mc-suggests.vercel.app/",  # <-- your actual frontend Render URL
-    "https://mc-suggests.onrender.com",           # optional: if same domain is used for both
+    "https://mc-suggests.vercel.app",
+    "https://mc-suggests.onrender.com",
 ]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
+    # Vercel preview deployments, e.g. https://mc-suggests-git-<branch>-<team>.vercel.app
+    allow_origin_regex=r"https://mc-suggests(-[a-z0-9-]+)?\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -69,25 +72,13 @@ def min_max_scale(arr: np.ndarray) -> np.ndarray:
     return (arr - a_min) / (a_max - a_min)
 
 
-def get_chapter_count(row) -> int:
-    """Latest chapter number from MangaDex if known, else an estimate based on status"""
+def get_chapter_count(row) -> Optional[int]:
+    """Latest chapter number from MangaDex, or None when it isn't known"""
     try:
         last = float(row.get("last_chapter"))
-        if last > 0:
-            return int(last)
     except (TypeError, ValueError):
-        pass
-    status = str(row["status"]).lower() if pd.notna(row["status"]) else ""
-    if status == "completed":
-        return 150  # Completed series typically have more chapters
-    elif status == "ongoing":
-        return 45   # Ongoing series have fewer chapters
-    elif status == "hiatus":
-        return 30   # Hiatus series have fewer chapters
-    elif status == "cancelled":
-        return 15   # Cancelled series have very few chapters
-    else:
-        return 25   # Default for unknown status
+        return None
+    return int(last) if last > 0 else None
 
 
 def get_display_title(row) -> str:
@@ -135,6 +126,43 @@ def find_by_title(df: pd.DataFrame, query: str, k: int = 5) -> List[int]:
     return idxs[:k]
 
 
+LANGUAGE_TYPES = {"ko": "manhwa", "ja": "manga", "zh": "manhua", "zh-hk": "manhua"}
+
+
+def _tag_list(value) -> List[str]:
+    if isinstance(value, (list, tuple, np.ndarray)):
+        return [str(t) for t in value if isinstance(t, str) and t]
+    return []
+
+
+def build_item(row, score: float) -> dict:
+    description = row.get("description")
+    if isinstance(description, str):
+        # MangaDex descriptions are Markdown; drop emphasis markers for plain-text display
+        description = re.sub(r"(\*{1,3}|_{2,3})(\S.*?\S|\S)\1", r"\2", description)
+    if isinstance(description, str) and len(description) > 320:
+        description = description[:317].rsplit(" ", 1)[0] + "…"
+    return {
+        "id": row["id"],
+        "title": get_display_title(row),
+        "score": float(score),
+        "year": int(row["year"]) if pd.notna(row["year"]) else None,
+        "rating": float(row["rating"]) if pd.notna(row["rating"]) else None,
+        "chapters": get_chapter_count(row),
+        "status": str(row["status"]) if pd.notna(row["status"]) else None,
+        "cover_url": get_cover_url(row),
+        "tags": _tag_list(row.get("tags")),
+        "description": description if isinstance(description, str) else None,
+        "type": LANGUAGE_TYPES.get(row.get("original_language")),
+        "follows": int(row["follows"]) if pd.notna(row.get("follows")) else None,
+        "url": f"https://mangadex.org/title/{row['id']}",
+    }
+
+
+def seed_titles(df: pd.DataFrame, seed_idxs: List[int]) -> List[str]:
+    return [get_display_title(df.iloc[i]) for i in seed_idxs]
+
+
 class RecommendResponseItem(BaseModel):
     id: str
     title: Optional[str] = ""
@@ -144,16 +172,45 @@ class RecommendResponseItem(BaseModel):
     chapters: Optional[int] = None
     status: Optional[str] = None
     cover_url: Optional[str] = None
+    tags: List[str] = []
+    description: Optional[str] = None
+    type: Optional[str] = None
+    follows: Optional[int] = None
+    url: Optional[str] = None
 
 
 class RecommendResponse(BaseModel):
     seed_count: int
+    seeds: List[str] = []
     results: List[RecommendResponseItem]
+
+
+class TitleMatch(BaseModel):
+    id: str
+    title: str
+    type: Optional[str] = None
+    year: Optional[int] = None
 
 
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+@app.get("/titles", response_model=List[TitleMatch])
+def search_titles(q: str = Query(..., min_length=1), k: int = Query(8, ge=1, le=20)):
+    """Title autocomplete; the dataset is sorted by follows, so popular titles come first."""
+    df = load_df()
+    items = []
+    for i in find_by_title(df, q, k=k):
+        row = df.iloc[i]
+        items.append({
+            "id": row["id"],
+            "title": get_display_title(row),
+            "type": LANGUAGE_TYPES.get(row.get("original_language")),
+            "year": int(row["year"]) if pd.notna(row["year"]) else None,
+        })
+    return items
 
 
 @app.get("/recommend/tfidf", response_model=RecommendResponse)
@@ -173,20 +230,8 @@ def recommend_tfidf(query: str = Query(...), k: int = Query(10, ge=1, le=50)):
         scores[si] = -1.0
     best = np.argpartition(-scores, range(min(k, len(scores))))[:k]
     best = best[np.argsort(-scores[best])]
-    items = []
-    for i in best:
-        row = df.iloc[int(i)]
-        items.append({
-            "id": row["id"],
-            "title": get_display_title(row),
-            "score": float(scores[i]),
-            "year": int(row["year"]) if pd.notna(row["year"]) else None,
-            "rating": float(row["rating"]) if pd.notna(row["rating"]) else None,
-            "chapters": get_chapter_count(row),
-            "status": str(row["status"]) if pd.notna(row["status"]) else None,
-            "cover_url": get_cover_url(row),
-        })
-    return {"seed_count": len(seed_idxs), "results": items}
+    items = [build_item(df.iloc[int(i)], scores[i]) for i in best]
+    return {"seed_count": len(seed_idxs), "seeds": seed_titles(df, seed_idxs), "results": items}
 
 
 @app.get("/recommend/sbert", response_model=RecommendResponse)
@@ -202,20 +247,8 @@ def recommend_sbert(query: str = Query(...), k: int = Query(10, ge=1, le=50)):
         scores[si] = -1.0
     best = np.argpartition(-scores, range(min(k, len(scores))))[:k]
     best = best[np.argsort(-scores[best])]
-    items = []
-    for i in best:
-        row = df.iloc[int(i)]
-        items.append({
-            "id": row["id"],
-            "title": get_display_title(row),
-            "score": float(scores[i]),
-            "year": int(row["year"]) if pd.notna(row["year"]) else None,
-            "rating": float(row["rating"]) if pd.notna(row["rating"]) else None,
-            "chapters": get_chapter_count(row),
-            "status": str(row["status"]) if pd.notna(row["status"]) else None,
-            "cover_url": get_cover_url(row),
-        })
-    return {"seed_count": len(seed_idxs), "results": items}
+    items = [build_item(df.iloc[int(i)], scores[i]) for i in best]
+    return {"seed_count": len(seed_idxs), "seeds": seed_titles(df, seed_idxs), "results": items}
 
 
 @app.get("/recommend/hybrid", response_model=RecommendResponse)
@@ -257,20 +290,8 @@ def recommend_hybrid(
     top = np.argpartition(-blended, range(min(k, len(blended))))[:k]
     top = top[np.argsort(-blended[top])]
 
-    items = []
-    for i in top:
-        row = df.iloc[int(i)]
-        items.append({
-            "id": row["id"],
-            "title": get_display_title(row),
-            "score": float(blended[i]),
-            "year": int(row["year"]) if pd.notna(row["year"]) else None,
-            "rating": float(row["rating"]) if pd.notna(row["rating"]) else None,
-            "chapters": get_chapter_count(row),
-            "status": str(row["status"]) if pd.notna(row["status"]) else None,
-            "cover_url": get_cover_url(row),
-        })
-    return {"seed_count": len(seed_idxs), "results": items}
+    items = [build_item(df.iloc[int(i)], blended[i]) for i in top]
+    return {"seed_count": len(seed_idxs), "seeds": seed_titles(df, seed_idxs), "results": items}
 
 
 @app.get("/covers/{manga_id}")
@@ -308,6 +329,8 @@ def root_page():
         return HTMLResponse("<h1>Frontend not found</h1>", status_code=404)
     with open(index_path, "r", encoding="utf-8") as f:
         html = f.read()
-    # Adjust static paths
-    html = html.replace("/static/", "/static/")
+    # index.html is written for Vercel (assets at the site root, API on Render); when the API
+    # serves it directly, point assets at /static and API calls at this same server.
+    html = html.replace('href="style.css', 'href="/static/style.css').replace('src="app.js', 'src="/static/app.js')
+    html = re.sub(r"window\.API_BASE = '[^']*';", "window.API_BASE = '';", html)
     return HTMLResponse(html)
