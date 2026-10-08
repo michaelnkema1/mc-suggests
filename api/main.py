@@ -137,6 +137,9 @@ def _tag_list(value) -> List[str]:
 
 def build_item(row, score: float) -> dict:
     description = row.get("description")
+    if isinstance(description, str):
+        # MangaDex descriptions are Markdown; drop emphasis markers for plain-text display
+        description = re.sub(r"(\*{1,3}|_{2,3})(\S.*?\S|\S)\1", r"\2", description)
     if isinstance(description, str) and len(description) > 320:
         description = description[:317].rsplit(" ", 1)[0] + "…"
     return {

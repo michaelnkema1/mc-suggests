@@ -1,19 +1,19 @@
 const API_BASE = () => (typeof window.API_BASE === 'string' ? window.API_BASE : 'https://mc-suggests.onrender.com');
 
-const QUICK_PICKS = ['Solo Leveling', 'Omniscient Reader', 'Tower of God', 'The Beginning After the End', 'Frieren', 'Lookism'];
+const QUICK_PICKS = ['Solo Leveling', 'Omniscient Reader', 'Tower of God', 'The Beginning After the End', 'Frieren'];
 
-const PLACEHOLDER_COVER = 'data:image/svg+xml;base64,' + btoa(
-  '<svg xmlns="http://www.w3.org/2000/svg" width="300" height="400" viewBox="0 0 300 400">' +
-  '<rect width="300" height="400" fill="#0d1830"/>' +
-  '<text x="150" y="210" text-anchor="middle" fill="#4cc9ff" font-family="sans-serif" font-size="28" opacity=".6">NO COVER</text></svg>'
-);
+// Results arrive best-first; tiers are by position in that list.
+const TIERS = [
+  { name: 'S', upTo: 2 },
+  { name: 'A', upTo: 5 },
+  { name: 'B', upTo: 9 },
+  { name: 'C', upTo: Infinity },
+];
 
-const STATUS = {
-  completed: 'Completed',
-  ongoing: 'Ongoing',
-  hiatus: 'Hiatus',
-  cancelled: 'Cancelled',
-};
+const STATUS = { completed: 'Completed', ongoing: 'Ongoing', hiatus: 'On hiatus', cancelled: 'Cancelled' };
+
+// Format tags that say nothing about the story
+const HIDDEN_TAGS = new Set(['long_strip', 'web_comic', 'full_color', 'adaptation', 'official_colored', 'award_winning']);
 
 function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>"']/g, c => (
@@ -21,108 +21,125 @@ function escapeHtml(value) {
   ));
 }
 
-// Results are already sorted best-first; ranks are by position, like a raid party lineup.
-function rankFor(index) {
-  if (index < 2) return 'S';
-  if (index < 5) return 'A';
-  if (index < 9) return 'B';
-  return 'C';
-}
-
-function prettyTag(tag) {
-  return tag.replace(/_/g, ' ');
-}
-
 function formatCount(n) {
-  if (n == null) return '';
+  if (n == null) return null;
   if (n >= 1000) return `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k`;
   return String(n);
 }
 
 async function fetchJson(path, params) {
-  const url = `${API_BASE()}${path}?${new URLSearchParams(params)}`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`Request failed: ${res.status}`);
+  const res = await fetch(`${API_BASE()}${path}?${new URLSearchParams(params)}`);
+  if (!res.ok) throw new Error(`the server answered ${res.status}`);
   return res.json();
 }
 
 function coverSrc(url) {
-  if (!url) return PLACEHOLDER_COVER;
+  if (!url) return null;
   return /^https?:\/\//.test(url) ? url : `${API_BASE()}${url}`;
 }
 
-function cardHtml(item, index) {
-  const rank = rankFor(index);
-  const match = Math.round(Math.max(0, Math.min(1, item.score)) * 100);
-  const tags = (item.tags || [])
-    .filter(t => !['long_strip', 'web_comic', 'full_color', 'adaptation'].includes(t))
-    .slice(0, 4);
-  const meta = [
-    item.year,
-    item.rating ? `★ ${item.rating.toFixed(1)}` : null,
-    item.chapters ? `${item.chapters} ch` : null,
-    item.follows ? `${formatCount(item.follows)} follows` : null,
-  ].filter(Boolean);
-  const status = item.status ? (STATUS[item.status] || item.status) : null;
-
-  return `
-    <article class="card rank-${rank}" style="--i:${index}">
-      <div class="cover">
-        <img src="${escapeHtml(coverSrc(item.cover_url))}" alt="" loading="lazy" referrerpolicy="no-referrer" />
-        <span class="rank" title="Rank ${rank}">${rank}</span>
-        ${item.type ? `<span class="type type-${escapeHtml(item.type)}">${escapeHtml(item.type)}</span>` : ''}
-      </div>
-      <div class="card-body">
-        <h3 class="title">${escapeHtml(item.title)}</h3>
-        <div class="meta">${meta.map(escapeHtml).join('<i>·</i>')}</div>
-        ${status ? `<span class="status-badge status-${escapeHtml(item.status)}">${escapeHtml(status)}</span>` : ''}
-        ${tags.length ? `<div class="tags">${tags.map(t => `<span>${escapeHtml(prettyTag(t))}</span>`).join('')}</div>` : ''}
-        ${item.description ? `<p class="desc">${escapeHtml(item.description)}</p>` : ''}
-        <div class="card-foot">
-          <div class="match" title="Similarity to your pick">
-            <div class="match-bar"><span style="width:${match}%"></span></div>
-            <span class="match-label">${match}% match</span>
-          </div>
-          ${item.url ? `<a class="read" href="${escapeHtml(item.url)}" target="_blank" rel="noopener">Read ↗</a>` : ''}
-        </div>
-      </div>
-    </article>`;
+function coverHtml(item) {
+  const src = coverSrc(item.cover_url);
+  const fallback = `<span class="cover-fallback">${escapeHtml(item.title)}</span>`;
+  if (!src) return fallback;
+  return `<img src="${escapeHtml(src)}" alt="" loading="lazy" referrerpolicy="no-referrer" />${fallback}`;
 }
 
-function renderResults(root, data) {
-  root.innerHTML = data.results.map(cardHtml).join('');
+function tierRowsHtml(results) {
+  let start = 0;
+  return TIERS.map(tier => {
+    const items = results.slice(start, Math.min(tier.upTo, results.length));
+    const offset = start;
+    start += items.length;
+    if (!items.length) return '';
+    return `
+      <div class="tier tier-${tier.name}">
+        <div class="tier-label">${tier.name}</div>
+        <div class="tier-items">
+          ${items.map((item, j) => `
+            <button type="button" class="pick" data-index="${offset + j}" aria-label="${escapeHtml(item.title)}">
+              <span class="cover">${coverHtml(item)}</span>
+              <span class="pick-title">${escapeHtml(item.title)}</span>
+            </button>`).join('')}
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function tierOf(index) {
+  return TIERS.find(t => index < t.upTo).name;
+}
+
+function detailHtml(item, index) {
+  const facts = [
+    item.type ? item.type[0].toUpperCase() + item.type.slice(1) : null,
+    item.year,
+    item.rating ? `★ ${item.rating.toFixed(1)}` : null,
+    item.chapters ? `${item.chapters} chapters` : null,
+    item.status ? (STATUS[item.status] || item.status) : null,
+    item.follows ? `${formatCount(item.follows)} follows` : null,
+  ].filter(Boolean);
+  const tags = (item.tags || []).filter(t => !HIDDEN_TAGS.has(t)).slice(0, 6);
+  return `
+    <span class="cover">${coverHtml(item)}</span>
+    <div class="detail-body">
+      <p class="detail-tier"><span class="tier-chip tier-${tierOf(index)}">${tierOf(index)}</span> #${index + 1} pick · ${Math.round(item.score * 100)}% match</p>
+      <h2>${escapeHtml(item.title)}</h2>
+      <p class="facts">${facts.map(escapeHtml).join(' · ')}</p>
+      ${item.description ? `<p class="synopsis">${escapeHtml(item.description)}</p>` : ''}
+      ${tags.length ? `<p class="tags">${tags.map(t => `<span>${escapeHtml(t.replace(/_/g, ' '))}</span>`).join('')}</p>` : ''}
+      ${item.url ? `<a class="read" href="${escapeHtml(item.url)}" target="_blank" rel="noopener">Read on MangaDex →</a>` : ''}
+    </div>`;
+}
+
+function wireCovers(root) {
   root.querySelectorAll('.cover img').forEach(img => {
-    img.addEventListener('error', () => { img.src = PLACEHOLDER_COVER; }, { once: true });
+    img.addEventListener('error', () => img.remove(), { once: true });
   });
 }
 
-function renderSkeletons(root, n = 6) {
-  root.innerHTML = Array.from({ length: n }, () => '<div class="card skeleton"><div class="cover"></div><div class="card-body"><i></i><i></i><i></i></div></div>').join('');
-}
-
-function setStatus(el, html, kind = 'info') {
-  el.className = `status-line ${kind}`;
-  el.innerHTML = html;
+function skeletonHtml() {
+  return TIERS.map((t, i) => `
+    <div class="tier tier-${t.name} loading">
+      <div class="tier-label">${t.name}</div>
+      <div class="tier-items">${'<span class="pick"><span class="cover"></span></span>'.repeat([2, 3, 4, 3][i])}</div>
+    </div>`).join('');
 }
 
 window.addEventListener('DOMContentLoaded', () => {
-  const form = document.getElementById('questForm');
+  const form = document.getElementById('searchForm');
   const q = document.getElementById('query');
   const go = document.getElementById('go');
-  const goLabel = go.querySelector('.arise-label');
-  const results = document.getElementById('results');
+  const tiers = document.getElementById('tiers');
+  const detail = document.getElementById('detail');
   const status = document.getElementById('status');
   const alpha = document.getElementById('alpha');
   const suggestions = document.getElementById('suggestions');
   const quickPicks = document.getElementById('quickPicks');
 
-  QUICK_PICKS.forEach(title => {
-    const chip = document.createElement('button');
-    chip.type = 'button';
-    chip.className = 'chip';
-    chip.textContent = title;
-    chip.addEventListener('click', () => { q.value = title; run(); });
-    quickPicks.appendChild(chip);
+  let results = [];
+
+  QUICK_PICKS.forEach((title, i) => {
+    const link = document.createElement('button');
+    link.type = 'button';
+    link.className = 'link';
+    link.textContent = title;
+    link.addEventListener('click', () => { q.value = title; run(); });
+    quickPicks.appendChild(link);
+    if (i < QUICK_PICKS.length - 1) quickPicks.appendChild(document.createTextNode(i === QUICK_PICKS.length - 2 ? ' or ' : ', '));
+  });
+
+  function select(index, scroll) {
+    tiers.querySelectorAll('.pick').forEach(el => el.classList.toggle('selected', Number(el.dataset.index) === index));
+    detail.innerHTML = detailHtml(results[index], index);
+    detail.hidden = false;
+    wireCovers(detail);
+    if (scroll) detail.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  tiers.addEventListener('click', e => {
+    const pick = e.target.closest('.pick[data-index]');
+    if (pick) select(Number(pick.dataset.index), true);
   });
 
   async function run() {
@@ -130,31 +147,36 @@ window.addEventListener('DOMContentLoaded', () => {
     if (!query) { q.focus(); return; }
     hideSuggestions();
     go.disabled = true;
-    goLabel.textContent = 'Scanning…';
-    renderSkeletons(results);
-    setStatus(status, `<b>[SYSTEM]</b> Scanning the archive for titles like “${escapeHtml(query)}”…`);
-    // Free hosting sleeps when idle; let people know why the first search can be slow.
-    const slow = setTimeout(() => setStatus(status,
-      '<b>[SYSTEM]</b> Waking up the server… free hosting can take up to a minute on the first search.'), 5000);
+    detail.hidden = true;
+    tiers.hidden = false;
+    tiers.innerHTML = skeletonHtml();
+    status.className = 'status';
+    status.textContent = `Ranking titles like “${query}”…`;
+    // Free hosting sleeps when idle, so the first request can take a while.
+    const slow = setTimeout(() => {
+      status.textContent = 'Waking the server up. The first search after a quiet spell can take up to a minute.';
+    }, 5000);
     try {
       const data = await fetchJson('/recommend/hybrid', { query, k: 12, alpha: alpha.value });
-      clearTimeout(slow);
       if (!data.seed_count) {
-        results.innerHTML = '';
-        setStatus(status, `<b>[SYSTEM]</b> No title matching “${escapeHtml(query)}” found in the archive. Try another name or pick one below the search bar.`, 'warn');
+        tiers.hidden = true;
+        status.className = 'status warn';
+        status.textContent = `Couldn't find “${query}”. Check the spelling, or pick a title from the suggestions as you type.`;
         return;
       }
-      const seeds = data.seeds && data.seeds.length ? data.seeds : [query];
-      const extra = seeds.length > 1 ? ` <span class="dim">(+${seeds.length - 1} related)</span>` : '';
-      setStatus(status, `<b>[QUEST COMPLETE]</b> Because you liked <em>${escapeHtml(seeds[0])}</em>${extra}: ${data.results.length} recommendations unlocked.`, 'ok');
-      renderResults(results, data);
+      results = data.results;
+      const seed = (data.seeds && data.seeds[0]) || query;
+      status.innerHTML = `If you liked <strong>${escapeHtml(seed)}</strong>, here's your list:`;
+      tiers.innerHTML = tierRowsHtml(results);
+      wireCovers(tiers);
+      if (results.length) select(0, false);
     } catch (e) {
-      clearTimeout(slow);
-      results.innerHTML = '';
-      setStatus(status, `<b>[ERROR]</b> Quest failed: ${escapeHtml(e.message)}. Try again in a moment.`, 'error');
+      tiers.hidden = true;
+      status.className = 'status error';
+      status.textContent = `Something went wrong (${e.message}). Try again in a moment.`;
     } finally {
+      clearTimeout(slow);
       go.disabled = false;
-      goLabel.textContent = 'Accept Quest';
     }
   }
 
@@ -172,8 +194,7 @@ window.addEventListener('DOMContentLoaded', () => {
   }
 
   function highlight(i) {
-    const items = suggestions.querySelectorAll('li');
-    items.forEach((li, j) => li.setAttribute('aria-selected', String(j === i)));
+    suggestions.querySelectorAll('li').forEach((li, j) => li.setAttribute('aria-selected', String(j === i)));
     active = i;
   }
 
@@ -190,7 +211,7 @@ window.addEventListener('DOMContentLoaded', () => {
         suggestions.innerHTML = items.map(it => `
           <li role="option" data-title="${escapeHtml(it.title)}">
             <span>${escapeHtml(it.title)}</span>
-            <small>${escapeHtml([it.type, it.year].filter(Boolean).join(' · '))}</small>
+            <small>${escapeHtml([it.type, it.year].filter(Boolean).join(', '))}</small>
           </li>`).join('');
         suggestions.hidden = false;
         active = -1;
