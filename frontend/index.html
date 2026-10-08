@@ -3,32 +3,64 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>MC-Suggests</title>
-  <link rel="stylesheet" href="style.css" />
+  <title>MC-Suggests · Find your next manhwa</title>
+  <meta name="description" content="Tell the System what you loved reading. Get your next manhwa, manga or manhua." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Rajdhani:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css?v=20261008" />
 </head>
 <body>
-  <div class="container">
-    <h1>MC-Suggests</h1>
-    <p class="welcome-message">What did you enjoy reading?</p>
-    <div class="controls">
-      <input id="query" type="text" placeholder="Search title, e.g., Solo Leveling" />
-      <select id="engine">
-        <option value="hybrid" selected>Hybrid (SBERT + TF-IDF)</option>
-      </select>
-      <label class="alpha" title="Blend between SBERT (1.0) and TF-IDF (0.0)">
-        α <input id="alpha" type="range" min="0" max="1" step="0.05" value="0.85" />
-        <span id="alphaVal">0.85</span>
-      </label>
-      <button id="go">Recommend</button>
-    </div>
-    <div id="results" class="results"></div>
-  </div>
+  <div class="bg-lines" aria-hidden="true"></div>
 
-  <script src="app.js?v=20240104"></script>
+  <main class="container">
+    <header class="hero">
+      <div class="system-window intro">
+        <div class="sys-head">
+          <span class="sys-icon">!</span>
+          <span class="sys-label">Notification</span>
+        </div>
+        <h1 class="logo">MC<span class="logo-dash">-</span>SUGGESTS</h1>
+        <p class="kr" lang="ko">다음 작품을 찾아라</p>
+        <p class="quest">A new quest has arrived: <strong>find your next read.</strong></p>
+        <p class="sub">Name a manhwa, manga or manhua you loved. The System will scan
+          <span id="catalogSize">17,000+</span> titles for your next obsession.</p>
+      </div>
+
+      <form id="questForm" class="search" autocomplete="off" role="search">
+        <div class="input-wrap">
+          <input id="query" type="text" placeholder="e.g. Solo Leveling" aria-label="Title you enjoyed"
+                 aria-autocomplete="list" aria-controls="suggestions" />
+          <ul id="suggestions" class="suggestions" role="listbox" hidden></ul>
+        </div>
+        <button id="go" type="submit" class="arise">
+          <span class="arise-label">Accept Quest</span>
+        </button>
+      </form>
+
+      <div class="chips" id="quickPicks" aria-label="Quick picks">
+        <span class="chips-label">Try:</span>
+      </div>
+
+      <label class="vibe" title="How results are matched">
+        <span>Keywords</span>
+        <input id="alpha" type="range" min="0" max="1" step="0.05" value="0.85" aria-label="Match by keywords or story vibe" />
+        <span>Story vibe</span>
+      </label>
+    </header>
+
+    <section id="status" class="status-line" aria-live="polite"></section>
+    <section id="results" class="results"></section>
+
+    <footer class="footer">
+      Data from <a href="https://mangadex.org" target="_blank" rel="noopener">MangaDex</a> ·
+      built by <a href="https://github.com/michaelnkema1/mc-suggests" target="_blank" rel="noopener">mc-suggests</a>
+    </footer>
+  </main>
+
   <script>
     window.API_BASE = 'https://mc-suggests.onrender.com';
   </script>
+  <script src="app.js?v=20261008"></script>
 </body>
 </html>
-
-
