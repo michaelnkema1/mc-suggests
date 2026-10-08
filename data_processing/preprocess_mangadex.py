@@ -24,8 +24,11 @@ def normalize_text(text: Optional[str]) -> Optional[str]:
 
 
 def parse_tags(value: Any) -> List[str]:
+    if isinstance(value, np.ndarray):
+        value = value.tolist()
     if isinstance(value, list):
-        raw = value
+        # older scrapes stored all tags as one "a | b | c" string inside a list
+        raw = [part for v in value if isinstance(v, str) for part in v.split("|")]
     elif isinstance(value, str):
         s = value.strip()
         if not s:
@@ -36,9 +39,9 @@ def parse_tags(value: Any) -> List[str]:
             if isinstance(parsed, list):
                 raw = parsed
             else:
-                raw = re.split(r";|,", s)
+                raw = re.split(r";|,|\|", s)
         except Exception:
-            raw = re.split(r";|,", s)
+            raw = re.split(r";|,|\|", s)
     else:
         return []
 
@@ -46,10 +49,10 @@ def parse_tags(value: Any) -> List[str]:
     for t in raw:
         if not isinstance(t, str):
             continue
-        tt = t.strip()
+        tt = t.strip().strip("_").strip()
         if not tt:
             continue
-        tt = tt.lower().replace(" ", "_")
+        tt = re.sub(r"\s+", "_", tt.lower())
         cleaned.add(tt)
     return sorted(cleaned)
 
@@ -70,21 +73,15 @@ def normalize_demographic(value: Any) -> Optional[str]:
 
 def main():
     parser = argparse.ArgumentParser(description="Preprocess MangaDex datasets")
-    parser.add_argument("--csv", default="mangadex_data.csv", help="Path to CSV dataset")
-    parser.add_argument("--json", default="mangadex_data.json", help="Path to JSON dataset")
+    parser.add_argument("--csv", default=None, help="Optional path to a CSV dataset")
+    parser.add_argument("--json", default="data_processing/mangadex_data.json", help="Path to JSON dataset")
     parser.add_argument("--out", default="mangadex_clean.parquet", help="Output parquet path")
     parser.add_argument("--tags_out", default="mangadex_tags.parquet", help="Exploded tags parquet path")
     args = parser.parse_args()
 
     # Read inputs
-    try:
-        df_csv = pd.read_csv(args.csv)
-    except Exception:
-        df_csv = pd.DataFrame()
-    try:
-        df_json = pd.read_json(args.json)
-    except Exception:
-        df_json = pd.DataFrame()
+    df_csv = pd.read_csv(args.csv) if args.csv else pd.DataFrame()
+    df_json = pd.read_json(args.json, dtype=False) if args.json else pd.DataFrame()
 
     frames = [d for d in [df_csv, df_json] if not d.empty]
     if not frames:
@@ -93,7 +90,8 @@ def main():
     df = pd.concat(frames, ignore_index=True, sort=False)
 
     # Ensure expected columns exist
-    for col in ["id", "title", "description", "tags", "demographic", "rating", "follows", "status", "content_rating", "year"]:
+    for col in ["id", "title", "description", "tags", "demographic", "rating", "follows", "status", "content_rating", "year",
+                "original_language", "last_chapter", "cover_url", "updated_at"]:
         if col not in df.columns:
             df[col] = pd.NA
 

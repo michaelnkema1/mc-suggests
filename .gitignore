@@ -26,3 +26,5 @@ covers/
 *.npz
 *.npy
 checkpoint_*.json
+# Python bytecode
+__pycache__/
