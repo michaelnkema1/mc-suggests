@@ -59,9 +59,10 @@ class MangaDexClient:
                 print(f"  rate limited; sleeping {backoff:.0f}s", file=sys.stderr)
                 time.sleep(backoff)
                 continue
-            if resp.status_code >= 500:
+            # MangaDex occasionally answers a valid request with a transient 400, so retry those too
+            if resp.status_code >= 400 and resp.status_code != 404 and attempt < retries - 1:
                 backoff = 2 ** attempt
-                print(f"  server error {resp.status_code}; retrying in {backoff}s", file=sys.stderr)
+                print(f"  HTTP {resp.status_code} ({resp.text[:200]}); retrying in {backoff}s", file=sys.stderr)
                 time.sleep(backoff)
                 continue
             resp.raise_for_status()
