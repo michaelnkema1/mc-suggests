@@ -10,7 +10,7 @@ A manhwa recommendation system using hybrid TF-IDF and Sentence-Transformer mode
 - `mangadex_clean.parquet` - Cleaned dataset (processed from raw data)
 - `models/` - Trained TF-IDF models and vectorizer
 - `models_sbert/` - Sentence-Transformer embeddings
-- `covers/` - Cover images for manhwas, was not uploaded because it was quite huge
+- `covers/` - Optional local cover images (not in git). Without them, covers load from MangaDex using the `cover_url` saved by the scraper
 
 **Development Scripts:**
 - `data_processing/` - Data processing scripts and raw data files
@@ -18,7 +18,8 @@ A manhwa recommendation system using hybrid TF-IDF and Sentence-Transformer mode
   - `train_tfidf.py` - TF-IDF model training
   - `embed_sbert.py` - Sentence-Transformer embedding generation
   - `evaluate_models.py` - Model evaluation script
-  - `mangadex_scraper2.0.py` - Data collection script
+  - `scrape_mangadex.py` - Pulls titles, tags, covers and stats from the MangaDex API
+  - `check_artifacts.py` - Verifies the dataset and model files line up row-for-row
 - `recommend.py` - CLI recommendation tool
 - `recommend_sbert.py` - CLI SBERT recommendation tool
 
@@ -69,21 +70,26 @@ make stop
 - `GET /recommend/hybrid?query=<title>&k=12&alpha=0.85` - Hybrid recommendations
 - `GET /covers/{manga_id}` - Cover images
 
-### Development (Optional)
+### Refreshing the data
 
-If you want to retrain models or process new data:
+The dataset comes from the official [MangaDex API](https://api.mangadex.org/docs/). To pull fresh titles and retrain everything:
 
 ```bash
-# 1. Preprocess raw data
-python data_processing/preprocess_mangadex.py --csv data_processing/mangadex_data.csv --json data_processing/mangadex_data.json --out mangadex_clean.parquet
+pip install -r data_processing/requirements.txt
+make refresh    # scrape -> preprocess -> TF-IDF -> SBERT embeddings -> consistency check
+```
 
-# 2. Train TF-IDF model
-python data_processing/train_tfidf.py --data mangadex_clean.parquet --model_out models/tfidf_vectorizer.joblib --matrix_out models/tfidf_matrix.npz
+That needs network access to `api.mangadex.org` and `huggingface.co` (for the SBERT model download). It takes roughly 10-20 minutes, mostly scraping (MangaDex allows ~5 requests/second) and embedding on CPU.
 
-# 3. Generate SBERT embeddings
-python data_processing/embed_sbert.py --data mangadex_clean.parquet --out_dir models_sbert
+- `make scrape` only fetches data, into `data_processing/mangadex_data.json`.
+- `make retrain` rebuilds `mangadex_clean.parquet`, `models/` and `models_sbert/` from that file.
+- By default the scraper takes the 6,000 most-followed titles for each original language: `ko` (manhwa), `ja` (manga) and `zh` (manhua). Change this with `python data_processing/scrape_mangadex.py --languages ko --per-language 8000` (MangaDex caps each language at 10,000).
 
-# 4. Evaluate models
+Always re-run all of `make retrain` after changing the data. The API matches rows across the parquet, the TF-IDF matrix and the embeddings by position.
+
+To evaluate the models:
+
+```bash
 python data_processing/evaluate_models.py --data mangadex_clean.parquet --k 10
 ```
 

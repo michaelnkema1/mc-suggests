@@ -1,0 +1,4 @@
+# Extra dependencies for refreshing the data and retraining (not needed to serve the API)
+-r ../requirements.txt
+requests
+sentence-transformers

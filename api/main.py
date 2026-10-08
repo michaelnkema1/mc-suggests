@@ -70,7 +70,13 @@ def min_max_scale(arr: np.ndarray) -> np.ndarray:
 
 
 def get_chapter_count(row) -> int:
-    """Generate estimated chapter count based on status"""
+    """Latest chapter number from MangaDex if known, else an estimate based on status"""
+    try:
+        last = float(row.get("last_chapter"))
+        if last > 0:
+            return int(last)
+    except (TypeError, ValueError):
+        pass
     status = str(row["status"]).lower() if pd.notna(row["status"]) else ""
     if status == "completed":
         return 150  # Completed series typically have more chapters
@@ -102,17 +108,18 @@ def get_display_title(row) -> str:
     return f"Manga {row.get('id', 'Unknown')[:8]}"
 
 
-def get_cover_url(manga_id: str) -> str:
-    """Get real cover image URL if available, otherwise placeholder"""
-    import os
-    
-    # Check if cover file exists
+def get_cover_url(row) -> str:
+    """Local cover if present, else the MangaDex cover URL, else the placeholder endpoint"""
+    manga_id = row["id"]
     covers_dir = "covers"
     jpg_path = os.path.join(covers_dir, f"{manga_id}.jpg")
     png_path = os.path.join(covers_dir, f"{manga_id}.png")
     
     if os.path.exists(jpg_path) or os.path.exists(png_path):
         return f"/covers/{manga_id}"
+    remote = row.get("cover_url")
+    if isinstance(remote, str) and remote.startswith("https://"):
+        return remote
     else:
         # Fallback to placeholder
         return f"/covers/{manga_id}"  # The endpoint will handle the fallback
@@ -177,7 +184,7 @@ def recommend_tfidf(query: str = Query(...), k: int = Query(10, ge=1, le=50)):
             "rating": float(row["rating"]) if pd.notna(row["rating"]) else None,
             "chapters": get_chapter_count(row),
             "status": str(row["status"]) if pd.notna(row["status"]) else None,
-            "cover_url": get_cover_url(row["id"]),
+            "cover_url": get_cover_url(row),
         })
     return {"seed_count": len(seed_idxs), "results": items}
 
@@ -206,7 +213,7 @@ def recommend_sbert(query: str = Query(...), k: int = Query(10, ge=1, le=50)):
             "rating": float(row["rating"]) if pd.notna(row["rating"]) else None,
             "chapters": get_chapter_count(row),
             "status": str(row["status"]) if pd.notna(row["status"]) else None,
-            "cover_url": get_cover_url(row["id"]),
+            "cover_url": get_cover_url(row),
         })
     return {"seed_count": len(seed_idxs), "results": items}
 
@@ -261,7 +268,7 @@ def recommend_hybrid(
             "rating": float(row["rating"]) if pd.notna(row["rating"]) else None,
             "chapters": get_chapter_count(row),
             "status": str(row["status"]) if pd.notna(row["status"]) else None,
-            "cover_url": get_cover_url(row["id"]),
+            "cover_url": get_cover_url(row),
         })
     return {"seed_count": len(seed_idxs), "results": items}
 
